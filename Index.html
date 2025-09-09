@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Chroma TD: Definitive Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+        :root {
+            --bg-color: #121212; --surface-color: #1e1e1e; --primary-text: #E0E0E0;
+            --secondary-text: #a0a0a0; --accent-color: #03dac6; --red: #ff3838;
+            --green: #32ff7e; --blue: #3867d6; --yellow: #f5c71a; --prismatic: #ffffff;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        body {
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background-color: var(--bg-color); font-family: 'Poppins', sans-serif;
+            color: var(--primary-text);
+        }
+        #game-wrapper {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; height: 100%; justify-content: center;
+        }
+        #game-container {
+            width: 95vw; height: 70vh; max-width: 900px; max-height: 600px;
+            background-color: var(--surface-color); border: 4px solid #333;
+            box-shadow: 0 0 25px rgba(0,0,0,0.6); position: relative; cursor: pointer;
+            border-radius: 12px; overflow: hidden;
+        }
+        #game-canvas { display: block; background-color: transparent; }
+        #ui-container {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 10px 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: calc(0.9em + 1vw); font-weight: 600; pointer-events: none;
+            text-shadow: 0 0 5px #000; z-index: 5;
+            background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 100%);
+        }
+        #wave-goal {
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            font-size: calc(0.8em + 1vw); font-weight: 600; background-color: rgba(0,0,0,0.5);
+            padding: 5px 15px; border-radius: 8px; pointer-events: none; z-index: 5;
+        }
+        #bottom-bar {
+            width: 100%; max-width: 900px;
+            margin-top: 10px; padding: 5px;
+            background: #2a2a2a; border-radius: 10px;
+        }
+        .bar-section { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 5px; }
+        .bar-label { font-weight: 600; font-size: 0.8em; margin-right: 10px; }
+        .color-swatch, .turret-buy-btn {
+            width: 11vw; height: 11vw; max-width: 45px; max-height: 45px;
+            border: 3px solid #555; border-radius: 8px; cursor: pointer;
+            transition: all 0.2s ease; position: relative;
+        }
+        .color-swatch.active, .turret-buy-btn.selected { border-color: white; transform: scale(1.15); }
+        .turret-cost {
+            position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+            background: #111; color: var(--yellow); font-size: 0.8em; padding: 1px 5px;
+            border-radius: 5px; font-weight: 600;
+        }
+        #turret-upgrade-menu {
+            position: absolute; display: none; flex-direction: column; gap: 5px;
+            background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px;
+            border: 2px solid white; z-index: 20;
+        }
+        .upgrade-btn, .sell-btn {
+            background: #333; color: white; border: 1px solid #555; padding: 8px;
+            border-radius: 5px; cursor: pointer; text-align: left;
+            font-size: 0.9em;
+        }
+        .upgrade-btn:hover { background: #444; }
+        .sell-btn { background: var(--red); }
+
+        .screen-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; z-index: 10; padding: 15px;
+            transform: translateY(100%); transition: transform 0.4s ease-in-out;
+        }
+        .screen-overlay.visible { transform: translateY(0%); }
+        .screen-overlay h1 { font-size: calc(2.2em + 3vw); margin: 0 0 10px 0; text-shadow: 0 0 10px #fff; }
+        .btn {
+            margin-top: 20px; padding: 15px 30px; font-size: calc(1em + 2vw);
+            font-family: 'Poppins', sans-serif; font-weight: 600; background-color: var(--accent-color);
+            color: var(--bg-color); border: none; cursor: pointer; border-radius: 8px;
+            transition: transform 0.2s ease; text-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="game-container">
+            <div id="ui-container">
+                <div id="wave">Wave: 1</div><div id="score">Score: 0</div>
+                <div id="coins">💰 0</div><div id="lives">❤️ 3</div>
+            </div>
+            <div id="wave-goal"></div>
+            <div id="name-screen" class="screen-overlay visible">
+                <h1>Chroma TD</h1>
+                <p>Enter your initials (3 chars) for the leaderboard.</p>
+                <input type="text" id="name-input" maxlength="3" placeholder="AAA" style="background: #333; border: 2px solid #555; color: white; padding: 10px; border-radius: 5px; font-size: 1.2em; text-align: center; width: 80%; max-width: 200px; margin-bottom: 15px;">
+                <button id="submit-name-btn" class="btn">Save & Start</button>
+            </div>
+            <div id="start-screen" class="screen-overlay">
+                <h1>Chroma TD</h1>
+                <p>Buy turrets and tap orbs to survive.</p>
+                <button id="start-button" class="btn">Start Game</button>
+                <button id="leaderboard-btn" class="btn" style="background-color: var(--blue);">Leaderboard</button>
+            </div>
+            <div id="upgrade-screen" class="screen-overlay">
+                <h1>Wave Complete!</h1>
+                <p id="wave-complete-stats"></p>
+                <div id="shop-container" style="display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 500px; height: 50%;">
+                    <div class="shop-section" id="upgrade-shop"><h2>Global Upgrades</h2></div>
+                </div>
+                <button id="next-wave-btn" class="btn">Start Next Wave</button>
+            </div>
+             <div id="game-over-screen" class="screen-overlay">
+                <h1>Game Over</h1><p id="final-stats"></p>
+                <button id="restart-button" class="btn">Play Again</button>
+                <button id="game-over-leaderboard-btn" class="btn" style="background-color: var(--blue);">Leaderboard</button>
+            </div>
+             <div id="leaderboard-screen" class="screen-overlay">
+                <h1>Leaderboard</h1>
+                <table id="leaderboard-table" style="width: 100%; max-width: 500px; margin-top: 20px; border-collapse: collapse;">
+                    <thead><tr><th style="padding: 8px; text-align: left; border-bottom: 1px solid #444;">Rank</th><th style="padding: 8px; text-align: left; border-bottom: 1px solid #444;">Name</th><th style="padding: 8px; text-align: left; border-bottom: 1px solid #444;">Wave</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <button id="back-to-menu-btn" class="btn">Back</button>
+            </div>
+            <div id="turret-upgrade-menu"></div>
+            <canvas id="game-canvas"></canvas>
+        </div>
+        <div id="bottom-bar">
+            <div class="bar-section" id="tapping-palette"><span class="bar-label">TAP:</span></div>
+            <div class="bar-section" id="build-bar"><span class="bar-label">BUILD:</span></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'chroma-td-definitive';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "DEMO", authDomain: "DEMO", projectId: "DEMO" };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        async function authenticateUser() { 
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) { console.error("Authentication error:", error); }
+        }
+        
+        const leaderboardCollection = collection(db, `/artifacts/${appId}/public/data/leaderboard`);
+
+        async function saveHighScore(name, wave) {
+            if (!auth.currentUser || !name) return;
+            const userDocRef = doc(leaderboardCollection, auth.currentUser.uid);
+            try {
+                const docSnap = await getDoc(userDocRef);
+                if (docSnap.exists() && docSnap.data().wave >= wave) return;
+                const scoreData = { name, wave, timestamp: new Date() };
+                await setDoc(userDocRef, scoreData);
+            } catch (error) { console.error("Error saving high score:", error); }
+        }
+        
+        async function fetchLeaderboard() {
+            const q = query(collection(db, `/artifacts/${appId}/public/data/leaderboard`));
+            const querySnapshot = await getDocs(q);
+            const scores = [];
+            querySnapshot.forEach((doc) => { scores.push(doc.data()); });
+            scores.sort((a, b) => b.wave - a.wave); 
+            return scores.slice(0, 10);
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await authenticateUser();
+            
+            const canvas = document.getElementById('game-canvas');
+            const ctx = canvas.getContext('2d');
+            let canvasWidth, canvasHeight;
+            
+            const ui = {
+                score: document.getElementById('score'), lives: document.getElementById('lives'),
+                wave: document.getElementById('wave'), waveGoal: document.getElementById('wave-goal'),
+                coins: document.getElementById('coins'), tappingPalette: document.getElementById('tapping-palette'),
+                buildBar: document.getElementById('build-bar'), turretUpgradeMenu: document.getElementById('turret-upgrade-menu')
+            };
+            const screens = {
+                name: document.getElementById('name-screen'), start: document.getElementById('start-screen'),
+                upgrade: document.getElementById('upgrade-screen'), gameOver: document.getElementById('game-over-screen'),
+                leaderboard: document.getElementById('leaderboard-screen')
+            };
+            const buttons = {
+                start: document.getElementById('start-button'), restart: document.getElementById('restart-button'),
+                nextWave: document.getElementById('next-wave-btn'), submitName: document.getElementById('submit-name-btn'),
+                leaderboard: document.getElementById('leaderboard-btn'),
+                gameOverLeaderboard: document.getElementById('game-over-leaderboard-btn'),
+                backToMenu: document.getElementById('back-to-menu-btn')
+            };
+
+            let gameLoopId, time, playerName = localStorage.getItem('chromaTDPlayerName');
+            const computedStyle = getComputedStyle(document.documentElement);
+            const colors = {
+                red: computedStyle.getPropertyValue('--red').trim(), green: computedStyle.getPropertyValue('--green').trim(),
+                blue: computedStyle.getPropertyValue('--blue').trim(), yellow: computedStyle.getPropertyValue('--yellow').trim(),
+                prismatic: computedStyle.getPropertyValue('--prismatic').trim()
+            };
+            const colorKeys = Object.keys(colors).filter(c => c !== 'prismatic');
+            const sfx = { synth: new Tone.Synth().toDestination(), pluck: new Tone.PluckSynth().toDestination() };
+
+            let gameState = {};
+            let orbs = [], turrets = [], projectiles = [], particles = [];
+            
+            const turretConfig = {
+                red: { cost: 25 }, green: { cost: 25 }, blue: { cost: 25 }, yellow: { cost: 25 },
+                prismatic: { cost: 150 }
+            };
+            const upgradesConfig = {
+                coinDrop: { name: 'Coin Drop Rate', baseCost: 125, step: 100, maxLevel: 3, bonus: 1 }
+            };
+
+            function init() {
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                if (playerName) { showScreen('start'); } else { showScreen('name'); }
+                setupEventListeners();
+                populateBuildBar();
+                populateTappingPalette();
+            }
+
+            function resetGameState() {
+                gameState = {
+                    score: 0, wave: 1, coins: 75, lives: 10, gameIsRunning: false,
+                    orbsToSpawn: 0, orbsDestroyed: 0, lastSpawnTime: 0,
+                    activeTapColor: null, turretToBuild: null, selectedTurret: null,
+                    upgrades: { coinDrop: 0 }
+                };
+                turrets = []; orbs = []; projectiles = []; particles = [];
+                hideTurretUpgradeMenu();
+            }
+
+            function showScreen(screenName) {
+                document.querySelectorAll('.screen-overlay').forEach(s => s.classList.remove('visible'));
+                if (screens[screenName]) screens[screenName].classList.add('visible');
+            }
+
+            function updateGameUI() {
+                ui.score.textContent = `Score: ${gameState.score}`;
+                ui.lives.textContent = `❤️ ${gameState.lives}`;
+                ui.wave.textContent = `Wave: ${gameState.wave}`;
+                ui.coins.textContent = `💰 ${gameState.coins}`;
+                ui.waveGoal.textContent = `Orbs Left: ${gameState.orbsToSpawn - gameState.orbsDestroyed}`;
+            }
+
+            function startGame() { resetGameState(); startWave(); }
+            
+            function startWave() {
+                showScreen(null);
+                gameState.orbsToSpawn = 10 + gameState.wave * 3;
+                gameState.orbsDestroyed = 0; gameState.lastSpawnTime = 0;
+                time = 0; gameState.gameIsRunning = true;
+                if (gameLoopId) cancelAnimationFrame(gameLoopId);
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+
+            function endWave() {
+                gameState.gameIsRunning = false; cancelAnimationFrame(gameLoopId);
+                gameState.coins += gameState.wave * 15;
+                sfx.pluck.triggerAttackRelease("C5", "8n");
+                document.getElementById('wave-complete-stats').textContent = `Your Coins: ${gameState.coins}`;
+                populateGlobalUpgradeShop();
+                showScreen('upgrade');
+                gameState.wave++;
+            }
+
+            function gameOver() {
+                gameState.gameIsRunning = false; cancelAnimationFrame(gameLoopId);
+                saveHighScore(playerName, gameState.wave);
+                document.getElementById('final-stats').textContent = `You survived to Wave ${gameState.wave} with a score of ${gameState.score}.`;
+                showScreen('gameOver');
+            }
+
+            function gameLoop(timestamp) {
+                if (!gameState.gameIsRunning) return;
+                if (!time) time = timestamp;
+                const deltaTime = timestamp - time;
+                time = timestamp;
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+                
+                const spawnInterval = 2500 / (1 + gameState.wave * 0.1);
+                if (time - gameState.lastSpawnTime > spawnInterval && (orbs.length + gameState.orbsDestroyed) < gameState.orbsToSpawn) {
+                    createOrb();
+                    gameState.lastSpawnTime = time;
+                }
+
+                orbs.forEach(orb => {
+                    orb.x -= orb.speed
+                    if (orb.camoTimer) {
+                        orb.camoTimer -= deltaTime;
+                        if (orb.camoTimer <= 0) {
+                            orb.isCamoHidden = !orb.isCamoHidden;
+                            orb.camoTimer = orb.isCamoHidden ? 2000 : 1000;
+                        }
+                    }
+                     if (orb.type === 'HEALER' && orb.x < canvasWidth * 0.75) {
+                        orb.healTimer = (orb.healTimer || 0) - deltaTime;
+                        if (orb.healTimer <= 0) {
+                            let target = orbs.find(o => o.type === 'ARMORED' && o.health < 2);
+                            if (target) { target.health = 2; createParticles(target.x, target.y, 'green', 15); }
+                            orb.healTimer = 3000;
+                        }
+                    }
+                });
+                turrets.forEach(turret => updateTurret(turret, deltaTime));
+                projectiles.forEach(p => { p.x += p.vx; p.y += p.vy; });
+                particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.alpha -= 0.025; });
+                
+                handleCollisions();
+                orbs = orbs.filter(orb => {
+                    if (orb.x + orb.radius < 0) {
+                        gameState.lives--;
+                        if (gameState.lives <= 0) gameOver();
+                        updateGameUI(); return false;
+                    }
+                    return true;
+                });
+                projectiles = projectiles.filter(p => p.x > 0 && p.x < canvasWidth && p.y > 0 && p.y < canvasHeight);
+                particles = particles.filter(p => p.alpha > 0);
+
+                drawOrbs(); drawTurrets(); drawProjectiles(); drawParticles();
+
+                if (gameState.orbsDestroyed >= gameState.orbsToSpawn && orbs.length === 0) {
+                    endWave();
+                } else { gameLoopId = requestAnimationFrame(gameLoop); }
+            }
+            
+            function drawOrbs() {
+                 orbs.forEach(orb => {
+                    ctx.beginPath(); ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = (orb.isCamoHidden) ? '#888' : colors[orb.color];
+                    ctx.shadowColor = (orb.isCamoHidden) ? '#888' : colors[orb.color];
+                    ctx.shadowBlur = 10; ctx.fill();
+                    if (orb.type === 'ARMORED') {
+                        ctx.strokeStyle = (orb.health === 2) ? '#ccc' : '#777';
+                        ctx.lineWidth = 4; ctx.stroke();
+                    }
+                     if (orb.type === 'HEALER') {
+                        ctx.fillStyle = 'white'; ctx.font = `${orb.radius * 1.5}px Poppins`;
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('+', orb.x, orb.y);
+                    }
+                });
+                ctx.shadowBlur = 0;
+            }
+            function drawTurrets() {
+                turrets.forEach(turret => {
+                    if (turret === gameState.selectedTurret) {
+                        ctx.beginPath(); ctx.arc(turret.x, turret.y, turret.range, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(${hexToRgb(colors[turret.color])}, 0.15)`;
+                        ctx.strokeStyle = `rgba(${hexToRgb(colors[turret.color])}, 0.6)`;
+                        ctx.stroke(); ctx.fill();
+                    }
+                    ctx.beginPath();
+                    const size = 24 + (turret.fireRateLevel + turret.rangeLevel - 2) * 1.5;
+                    ctx.rect(turret.x - size/2, turret.y - size/2, size, size);
+                    ctx.fillStyle = colors[turret.color]; ctx.strokeStyle = 'black'; ctx.lineWidth = 2;
+                    ctx.fill(); ctx.stroke();
+                    if (turret.color !== 'prismatic') {
+                        ctx.fillStyle = 'black'; ctx.font = 'bold 12px Poppins'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.fillText(turret.fireRateLevel + turret.rangeLevel - 2, turret.x, turret.y);
+                    }
+                });
+            }
+            function drawProjectiles() {
+                projectiles.forEach(p => {
+                    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = colors[p.color]; ctx.fill();
+                });
+            }
+            function drawParticles() {
+                particles.forEach(p => {
+                    ctx.globalAlpha = p.alpha; ctx.fillStyle = colors[p.color];
+                    ctx.fillRect(p.x, p.y, p.size, p.size);
+                    ctx.globalAlpha = 1.0;
+                });
+            }
+            
+            function updateTurret(turret, dt) {
+                turret.fireCooldown -= dt;
+                if (turret.fireCooldown <= 0) {
+                    let target = findTarget(turret);
+                    if (target) {
+                        createProjectile(turret, target);
+                        turret.fireCooldown = turret.fireRate;
+                    }
+                }
+            }
+            
+            function handleCollisions() {
+                for (let i = projectiles.length - 1; i >= 0; i--) {
+                    const p = projectiles[i];
+                    for (let j = orbs.length - 1; j >= 0; j--) {
+                        if (Math.hypot(p.x - orbs[j].x, p.y - orbs[j].y) < orbs[j].radius) {
+                            damageOrb(orbs[j]);
+                            projectiles.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            function damageOrb(orb) {
+                orb.health--;
+                if (orb.health <= 0) {
+                    gameState.score += 10;
+                    gameState.coins += 1 + gameState.upgrades.coinDrop;
+                    gameState.orbsDestroyed++;
+                    createParticles(orb.x, orb.y, orb.color, 20);
+                    orbs.splice(orbs.indexOf(orb), 1);
+                    sfx.synth.triggerAttackRelease("C3", "32n");
+                }
+                updateGameUI();
+            }
+
+            function createOrb() {
+                const r = Math.random() * (canvasWidth / 80) + (canvasWidth / 50);
+                const baseSpeed = (canvasWidth / 800) * (1 + gameState.wave * 0.05);
+                const orb = {
+                    x: canvasWidth + r, y: Math.random() * (canvasHeight - 2 * r) + r, radius: r,
+                    color: colorKeys[Math.floor(Math.random() * colorKeys.length)],
+                    speed: baseSpeed * (0.8 + Math.random() * 0.4), health: 1, type: 'NORMAL'
+                };
+                const typeChance = Math.random();
+                if (gameState.wave > 2 && typeChance > 0.7) { orb.type = 'ARMORED'; orb.health = 2; }
+                if (gameState.wave > 4 && typeChance > 0.85) { orb.type = 'CAMO'; orb.isCamoHidden = false; orb.camoTimer = 2000 + Math.random() * 1000; }
+                if (gameState.wave > 6 && typeChance > 0.95) { orb.type = 'HEALER'; orb.speed *= 0.7; }
+                orbs.push(orb);
+            }
+            function createTurret(x, y, color) {
+                turrets.push({
+                    id: Math.random(), x, y, color,
+                    range: canvasWidth * 0.15, fireRate: 1000, fireCooldown: 0,
+                    rangeLevel: 1, fireRateLevel: 1
+                });
+            }
+            function createProjectile(turret, target) {
+                const angle = Math.atan2(target.y - turret.y, target.x - turret.x);
+                projectiles.push({
+                    x: turret.x, y: turret.y, color: turret.color === 'prismatic' ? target.color : turret.color,
+                    vx: Math.cos(angle) * 5, vy: Math.sin(angle) * 5
+                });
+                sfx.synth.triggerAttackRelease("C2", "32n");
+            }
+            function createParticles(x, y, color, count) {
+                for(let i=0; i<count; i++) {
+                    particles.push({
+                        x, y, color, size: Math.random() * 3 + 2,
+                        vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+                        alpha: 1.0
+                    });
+                }
+            }
+
+            function populateTappingPalette() {
+                // BUG FIX: Corrected typo that was crashing the script
+                ui.tappingPalette.innerHTML = '<span class="bar-label">TAP:</span>';
+                colorKeys.forEach(color => {
+                    const swatch = document.createElement('div');
+                    swatch.className = 'color-swatch';
+                    swatch.style.backgroundColor = colors[color];
+                    swatch.dataset.color = color;
+                    swatch.addEventListener('click', () => {
+                        gameState.activeTapColor = color;
+                        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+                        swatch.classList.add('active');
+                        deselectTurretToBuild();
+                    });
+                    ui.tappingPalette.appendChild(swatch);
+                });
+            }
+
+            function populateBuildBar() {
+                Object.keys(turretConfig).forEach(color => {
+                    const btn = document.createElement('div');
+                    btn.className = 'turret-buy-btn';
+                    btn.style.backgroundColor = colors[color];
+                    btn.dataset.color = color;
+                    btn.innerHTML = `<div class="turret-cost">💰${turretConfig[color].cost}</div>`;
+                    btn.addEventListener('click', () => selectTurretToBuild(color));
+                    ui.buildBar.appendChild(btn);
+                });
+            }
+
+            function selectTurretToBuild(color) {
+                gameState.turretToBuild = color; gameState.activeTapColor = null;
+                document.querySelectorAll('.turret-buy-btn').forEach(b => b.classList.remove('selected'));
+                document.querySelector(`.turret-buy-btn[data-color="${color}"]`).classList.add('selected');
+                document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+                hideTurretUpgradeMenu();
+            }
+
+            function deselectTurretToBuild() {
+                gameState.turretToBuild = null;
+                document.querySelectorAll('.turret-buy-btn').forEach(b => b.classList.remove('selected'));
+            }
+
+            function showTurretUpgradeMenu(turret) {
+                gameState.selectedTurret = turret;
+                const menu = ui.turretUpgradeMenu;
+                const rangeCost = 20 * Math.pow(2, turret.rangeLevel - 1);
+                const fireRateCost = 25 * Math.pow(2, turret.fireRateLevel - 1);
+                const sellValue = Math.floor((turretConfig[turret.color].cost + (rangeCost + fireRateCost - 45) / 2) / 2);
+
+                menu.innerHTML = `
+                    <button class="upgrade-btn" id="upgrade-range-btn">Range Lvl ${turret.rangeLevel} (💰${rangeCost})</button>
+                    <button class="upgrade-btn" id="upgrade-rate-btn">Fire Rate Lvl ${turret.fireRateLevel} (💰${fireRateCost})</button>
+                    <button class="sell-btn" id="sell-btn">Sell (💰${sellValue})</button>
+                `;
+                menu.style.display = 'flex';
+                const menuRect = menu.getBoundingClientRect();
+                menu.style.left = `${Math.min(turret.x + 20, canvasWidth - menuRect.width - 10)}px`;
+                menu.style.top = `${Math.max(turret.y - 40, 10)}px`;
+
+                document.getElementById('upgrade-range-btn').onclick = () => { if (gameState.coins >= rangeCost) { gameState.coins -= rangeCost; turret.rangeLevel++; turret.range *= 1.15; updateGameUI(); hideTurretUpgradeMenu(); sfx.pluck.triggerAttackRelease("A4", "8n"); } };
+                document.getElementById('upgrade-rate-btn').onclick = () => { if (gameState.coins >= fireRateCost) { gameState.coins -= fireRateCost; turret.fireRateLevel++; turret.fireRate *= 0.85; updateGameUI(); hideTurretUpgradeMenu(); sfx.pluck.triggerAttackRelease("A4", "8n"); } };
+                document.getElementById('sell-btn').onclick = () => { gameState.coins += sellValue; turrets.splice(turrets.indexOf(turret), 1); updateGameUI(); hideTurretUpgradeMenu(); sfx.pluck.triggerAttackRelease("C3", "8n"); };
+            }
+
+            function hideTurretUpgradeMenu() {
+                gameState.selectedTurret = null;
+                ui.turretUpgradeMenu.style.display = 'none';
+            }
+            
+            function populateGlobalUpgradeShop() {
+                const shop = document.getElementById('upgrade-shop');
+                shop.innerHTML = '<h2>Global Upgrades</h2>';
+                Object.keys(upgradesConfig).forEach(key => {
+                    const config = upgradesConfig[key];
+                    const currentLevel = gameState.upgrades[key];
+                    if (currentLevel < config.maxLevel) {
+                        const cost = config.baseCost + currentLevel * config.step;
+                        const item = document.createElement('div');
+                        item.className = 'shop-item';
+                        item.innerHTML = `<div class="shop-item-info"><h3>${config.name}</h3><p>Level: ${currentLevel} -> ${currentLevel+1}</p></div>
+                                        <button class="btn shop-btn" data-cost="${cost}">Buy (${cost} C)</button>`;
+                        shop.appendChild(item);
+                        const btn = item.querySelector('button');
+                        if (gameState.coins < cost) btn.disabled = true;
+                        btn.addEventListener('click', () => { if (gameState.coins >= cost) { gameState.coins -= cost; gameState.upgrades[key]++; populateGlobalUpgradeShop(); }});
+                    }
+                });
+            }
+
+            function handleCanvasTap(event) {
+                const rect = canvas.getBoundingClientRect();
+                const touch = event.touches ? event.touches[0] : event;
+                const tapX = touch.clientX - rect.left;
+                const tapY = touch.clientY - rect.top;
+                
+                let tappedTurret = turrets.find(turret => Math.hypot(tapX - turret.x, tapY - turret.y) < 20);
+                if (tappedTurret) {
+                    deselectTurretToBuild();
+                    showTurretUpgradeMenu(tappedTurret);
+                    return;
+                }
+                if (gameState.selectedTurret) {
+                    hideTurretUpgradeMenu();
+                    return;
+                }
+                
+                if (gameState.turretToBuild) {
+                    const cost = turretConfig[gameState.turretToBuild].cost;
+                    if (gameState.coins >= cost) {
+                        gameState.coins -= cost;
+                        createTurret(tapX, tapY, gameState.turretToBuild);
+                        sfx.pluck.triggerAttackRelease("G4", "8n");
+                        updateGameUI();
+                    }
+                    return;
+                }
+                
+                if (gameState.activeTapColor) {
+                    for (let i = orbs.length - 1; i >= 0; i--) {
+                        const orb = orbs[i];
+                        if (orb.color === gameState.activeTapColor && Math.hypot(tapX - orb.x, tapY - orb.y) < orb.radius) {
+                            damageOrb(orb);
+                            gameState.coins++;
+                            updateGameUI();
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            function setupEventListeners() {
+                const tapEvent = ('ontouchstart' in window) ? 'touchstart' : 'click';
+                canvas.addEventListener(tapEvent, handleCanvasTap);
+                buttons.submitName.addEventListener('click', () => {
+                    const name = document.getElementById('name-input').value.trim().toUpperCase();
+                    if(name.length > 0) {
+                        playerName = name; localStorage.setItem('chromaTDPlayerName', playerName);
+                        showScreen('start');
+                    }
+                });
+                buttons.start.addEventListener('click', startGame);
+                buttons.restart.addEventListener('click', startGame);
+                buttons.nextWave.addEventListener('click', startWave);
+                [buttons.leaderboard, buttons.gameOverLeaderboard].forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const scores = await fetchLeaderboard();
+                        const tbody = document.querySelector('#leaderboard-screen tbody');
+                        tbody.innerHTML = '';
+                        scores.forEach((s, i) => { tbody.innerHTML += `<tr><td>${i+1}</td><td>${s.name}</td><td>${s.wave}</td></tr>`; });
+                        showScreen('leaderboard');
+                    });
+                });
+                buttons.backToMenu.addEventListener('click', () => showScreen(gameState.lives <= 0 ? 'gameOver' : 'start'));
+            }
+
+            function resizeCanvas() {
+                canvasWidth = gameContainer.clientWidth; canvasHeight = gameContainer.clientHeight;
+                canvas.width = canvasWidth; canvas.height = canvasHeight;
+            }
+            function findTarget(turret) {
+                const effectiveRange = turret.range; let closestOrb = null; let closestDist = Infinity;
+                orbs.forEach(orb => {
+                    if (turret.color === 'prismatic' || orb.color === turret.color) {
+                        const dist = Math.hypot(orb.x - turret.x, orb.y - turret.y);
+                        if (dist < closestDist && dist < effectiveRange) {
+                            closestDist = dist; closestOrb = orb;
+                        }
+                    }
+                });
+                return closestOrb;
+            }
+            function hexToRgb(hex) {
+                let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
+            }
+            init();
+        });
+    </script>
+</body>
+</html>
+
+
