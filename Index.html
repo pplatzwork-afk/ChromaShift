@@ -113,8 +113,9 @@
             <div id="upgrade-screen" class="screen-overlay">
                 <h1>Wave Complete!</h1>
                 <p id="wave-complete-stats"></p>
-                <div id="shop-container" style="display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 500px; height: 50%;">
-                    <div class="shop-section" id="upgrade-shop"><h2>Global Upgrades</h2></div>
+                <div id="shop-container" style="display: flex; flex-direction: row; gap: 20px; width: 98%; max-width: 900px; height: 60%; justify-content: center; align-items: flex-start;">
+                    <div class="shop-section" id="upgrade-shop" style="flex:1; min-width:220px; background:#222; border-radius:10px; padding:10px; overflow-y:auto; max-height:100%;"><h2>Upgrades</h2></div>
+                    <div class="shop-section" id="ability-shop" style="flex:1; min-width:220px; background:#222; border-radius:10px; padding:10px; overflow-y:auto; max-height:100%;"><h2>Abilities</h2></div>
                 </div>
                 <button id="next-wave-btn" class="btn">Start Next Wave</button>
             </div>
@@ -185,11 +186,12 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             await authenticateUser();
-            
+
             const canvas = document.getElementById('game-canvas');
             const ctx = canvas.getContext('2d');
             let canvasWidth, canvasHeight;
-            
+            const gameContainer = document.getElementById('game-container'); // Fix for canvas sizing
+
             const ui = {
                 score: document.getElementById('score'), lives: document.getElementById('lives'),
                 wave: document.getElementById('wave'), waveGoal: document.getElementById('wave-goal'),
@@ -221,19 +223,37 @@
 
             let gameState = {};
             let orbs = [], turrets = [], projectiles = [], particles = [];
-            
+
+            // Turret config
             const turretConfig = {
                 red: { cost: 25 }, green: { cost: 25 }, blue: { cost: 25 }, yellow: { cost: 25 },
-                prismatic: { cost: 150 }
+                prismatic: { cost: 150 },
+                sniper: { cost: 100, longRange: true, fireRate: 2000, color: 'blue' },
+                slower: { cost: 80, slowEffect: 0.5, fireRate: 1200, color: 'green' },
+                splash: { cost: 120, splashRadius: 40, fireRate: 1500, color: 'yellow' }
             };
+            // Upgrades config
             const upgradesConfig = {
-                coinDrop: { name: 'Coin Drop Rate', baseCost: 125, step: 100, maxLevel: 3, bonus: 1 }
+                coinDrop: { name: 'Coin Drop Rate', baseCost: 125, step: 100, maxLevel: 3, bonus: 1 },
+                sniperDmg: { name: 'Sniper Damage', baseCost: 150, step: 120, maxLevel: 3, bonus: 1 },
+                slowEffect: { name: 'Slower Effect', baseCost: 130, step: 110, maxLevel: 3, bonus: 0.1 },
+                splashRadius: { name: 'Splash Radius', baseCost: 140, step: 115, maxLevel: 3, bonus: 10 }
+            };
+            // Abilities config
+            const abilitiesConfig = {
+                bomb: { name: 'Bomb', desc: 'Destroy all orbs on screen', cost: 100, cooldown: 1 },
+                freeze: { name: 'Freeze', desc: 'Freeze all orbs for 3s', cost: 80, cooldown: 1 },
+                boost: { name: 'Boost', desc: 'Double turret fire rate for 5s', cost: 120, cooldown: 1 }
             };
 
             function init() {
                 resizeCanvas();
                 window.addEventListener('resize', resizeCanvas);
-                if (playerName) { showScreen('start'); } else { showScreen('name'); }
+                if (playerName) {
+                    showScreen('start');
+                } else {
+                    showScreen('name');
+                }
                 setupEventListeners();
                 populateBuildBar();
                 populateTappingPalette();
@@ -252,7 +272,7 @@
 
             function showScreen(screenName) {
                 document.querySelectorAll('.screen-overlay').forEach(s => s.classList.remove('visible'));
-                if (screens[screenName]) screens[screenName].classList.add('visible');
+                if (screenName && screens[screenName]) screens[screenName].classList.add('visible');
             }
 
             function updateGameUI() {
@@ -263,7 +283,13 @@
                 ui.waveGoal.textContent = `Orbs Left: ${gameState.orbsToSpawn - gameState.orbsDestroyed}`;
             }
 
-            function startGame() { resetGameState(); startWave(); }
+            function startGame() {
+                // Reset palette and build bar UI
+                document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+                document.querySelectorAll('.turret-buy-btn').forEach(b => b.classList.remove('selected'));
+                resetGameState();
+                startWave();
+            }
             
             function startWave() {
                 showScreen(null);
@@ -275,11 +301,9 @@
             }
 
             function endWave() {
-                gameState.gameIsRunning = false; cancelAnimationFrame(gameLoopId);
-                gameState.coins += gameState.wave * 15;
-                sfx.pluck.triggerAttackRelease("C5", "8n");
                 document.getElementById('wave-complete-stats').textContent = `Your Coins: ${gameState.coins}`;
                 populateGlobalUpgradeShop();
+                populateAbilityShop();
                 showScreen('upgrade');
                 gameState.wave++;
             }
@@ -479,11 +503,15 @@
                     swatch.className = 'color-swatch';
                     swatch.style.backgroundColor = colors[color];
                     swatch.dataset.color = color;
+                    swatch.setAttribute('tabindex', '0'); // Accessibility
                     swatch.addEventListener('click', () => {
                         gameState.activeTapColor = color;
                         document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
                         swatch.classList.add('active');
                         deselectTurretToBuild();
+                    });
+                    swatch.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') swatch.click();
                     });
                     ui.tappingPalette.appendChild(swatch);
                 });
@@ -496,7 +524,11 @@
                     btn.style.backgroundColor = colors[color];
                     btn.dataset.color = color;
                     btn.innerHTML = `<div class="turret-cost">💰${turretConfig[color].cost}</div>`;
+                    btn.setAttribute('tabindex', '0'); // Accessibility
                     btn.addEventListener('click', () => selectTurretToBuild(color));
+                    btn.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') btn.click();
+                    });
                     ui.buildBar.appendChild(btn);
                 });
             }
@@ -543,21 +575,45 @@
             
             function populateGlobalUpgradeShop() {
                 const shop = document.getElementById('upgrade-shop');
-                shop.innerHTML = '<h2>Global Upgrades</h2>';
+                shop.innerHTML = '<h2>Upgrades</h2>';
                 Object.keys(upgradesConfig).forEach(key => {
                     const config = upgradesConfig[key];
-                    const currentLevel = gameState.upgrades[key];
+                    const currentLevel = gameState.upgrades[key] || 0;
                     if (currentLevel < config.maxLevel) {
                         const cost = config.baseCost + currentLevel * config.step;
                         const item = document.createElement('div');
                         item.className = 'shop-item';
-                        item.innerHTML = `<div class="shop-item-info"><h3>${config.name}</h3><p>Level: ${currentLevel} -> ${currentLevel+1}</p></div>
-                                        <button class="btn shop-btn" data-cost="${cost}">Buy (${cost} C)</button>`;
+                        item.style = 'background:#333; border-radius:8px; margin-bottom:10px; padding:10px;';
+                        item.innerHTML = `<div class="shop-item-info"><h3>${config.name}</h3><p>Level: ${currentLevel} → ${currentLevel+1}</p></div>
+                            <button class="btn shop-btn" data-cost="${cost}">Buy (${cost} C)</button>`;
                         shop.appendChild(item);
                         const btn = item.querySelector('button');
                         if (gameState.coins < cost) btn.disabled = true;
-                        btn.addEventListener('click', () => { if (gameState.coins >= cost) { gameState.coins -= cost; gameState.upgrades[key]++; populateGlobalUpgradeShop(); }});
+                        btn.addEventListener('click', () => { if (gameState.coins >= cost) { gameState.coins -= cost; gameState.upgrades[key] = (gameState.upgrades[key]||0)+1; populateGlobalUpgradeShop(); populateAbilityShop(); updateGameUI(); }});
                     }
+                });
+            }
+            function populateAbilityShop() {
+                const shop = document.getElementById('ability-shop');
+                shop.innerHTML = '<h2>Abilities</h2>';
+                Object.keys(abilitiesConfig).forEach(key => {
+                    const config = abilitiesConfig[key];
+                    const item = document.createElement('div');
+                    item.className = 'shop-item';
+                    item.style = 'background:#333; border-radius:8px; margin-bottom:10px; padding:10px;';
+                    item.innerHTML = `<div class="shop-item-info"><h3>${config.name}</h3><p>${config.desc}</p></div>
+                        <button class="btn ability-btn" data-key="${key}" data-cost="${config.cost}">Buy (${config.cost} C)</button>`;
+                    shop.appendChild(item);
+                    const btn = item.querySelector('button');
+                    if (gameState.coins < config.cost) btn.disabled = true;
+                    btn.addEventListener('click', () => {
+                        if (gameState.coins >= config.cost) {
+                            gameState.coins -= config.cost;
+                            gameState.abilities = gameState.abilities || {};
+                            gameState.abilities[key] = (gameState.abilities[key]||0)+1;
+                            populateAbilityShop(); updateGameUI();
+                        }
+                    });
                 });
             }
 
@@ -652,5 +708,8 @@
     </script>
 </body>
 </html>
+
+
+
 
 
